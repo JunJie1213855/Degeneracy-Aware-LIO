@@ -11,11 +11,14 @@
 
 class DegeneracyDetector {
 private:
+    // 退化检测模式
     int degeneracy_detection_mode_;
-
+    // 平移雅可比矩阵和对应的残差值
     Eigen::Matrix<double, Eigen::Dynamic, 6> H_;
     Eigen::Matrix<double, Eigen::Dynamic, 1> w_trans_;
     Eigen::Matrix<double, Eigen::Dynamic, 1> w_rots_;
+
+    // 尺度因子
     const double scaling_factor_ = 1000.0;
     const double min_weight_ = 1.0;
     const double max_weight_ = 10.0;
@@ -30,15 +33,20 @@ private:
 
     std::array<int, 6> degeneracy_flags_ = {0, 0, 0, 0, 0, 0};
 
+    // 退化矩阵和退化向量
     Eigen::Matrix<double, 6, 6> degeneracy_matrix_;
     Eigen::Matrix<double, 6, 1> degeneracy_vector_;
 
+    // 平移特征向量矩阵和特征值
     Eigen::Matrix3cd evecs_trans_;
     Eigen::Vector3cd evals_trans_;
+    // 排序后的平移特征值索引
     std::array<int,3> sorted_idx_trans_;
 
+    // 旋转特征向量矩阵和特征值
     Eigen::Matrix3cd evecs_rot_;
     Eigen::Vector3cd evals_rot_;
+    // 排序后的旋转特征值索引
     std::array<int,3>  sorted_idx_rot_;
 
     double t_degeneracy_ = 0.0;
@@ -70,23 +78,30 @@ public:
 
     std::tuple<std::array<int,3>, Eigen::Vector3cd, Eigen::Matrix3cd>
     compute_eigen(Eigen::Matrix3d &P){
+        // 特征凤姐
         Eigen::EigenSolver<Eigen::Matrix3d> eigen_solver(P);
+        // 特征值和对应特征向量
         Eigen::Vector3cd evals = eigen_solver.eigenvalues();
         Eigen::Matrix3cd evecs = eigen_solver.eigenvectors();
 
         Eigen::Vector3d evalsReal = evals.real();
 
+        // 最大特征值和最小特征值的索引
         Eigen::Matrix3f::Index idxMin, idxMax;
         evalsReal.minCoeff(&idxMin);
         evalsReal.maxCoeff(&idxMax);
-        int idxMid = 3 - idxMin - idxMax;
 
+        // 中间特征值的索引
+        int idxMid = 3 - idxMin - idxMax;
+        // 索引
         std::array<int,3> indices = {idxMin, idxMid, idxMax};
 
+        // 返回索引、特征值序列以及特征向量序列
         return std::make_tuple(indices, evals, evecs);
 
     }
 
+    // 初始化信息矩阵
     void init_information_matrix(int num_feature){
         H_.setZero(num_feature, 6);
         w_trans_.setZero(num_feature, 1);
@@ -196,8 +211,9 @@ public:
         return H_;
     }
 
+    // 输出退化方向向量
     void compute_degeneracy_direction() {
-        Eigen::Matrix<double, 6, 6> P = H_.transpose()*H_;
+        Eigen::Matrix<double, 6, 6> P = H_.transpose() * H_;
         Eigen::Matrix3d Ptrans;
         Eigen::Matrix3d Prot;
 

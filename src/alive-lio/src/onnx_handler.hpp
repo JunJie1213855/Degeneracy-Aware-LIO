@@ -41,17 +41,21 @@ private:
     Ort::Session session_{nullptr};
     Ort::AllocatorWithDefaultOptions allocator_;
     Ort::MemoryInfo memory_info_;
+
     // 输入输出张量的名称、尺寸
     std::vector<std::string> input_names_;
     std::vector<std::string> output_names_;
     std::vector<std::int64_t> input_shapes_;
     std::vector<std::int64_t> output_shapes_;
-    
+    // 也是名称，但是适用于 C 风格的 char* 字符
     std::vector<const char *> input_names_char_;
     std::vector<const char *> output_names_char_;
+
+    // gpu 设备 id、是否使用旋转姿态、缓冲区长度
     int gpu_id_;
     bool rotation_invariant_;
     int buffer_len_;
+
     // 输入张量数据
     std::vector<float> acc_flattened_;
     std::vector<float> gyro_flattened_;
@@ -62,6 +66,7 @@ private:
     std::vector<float> velocities_;
     std::vector<float> covariances_;
 
+    // 推理线程数量
     int num_threads_ = 1;
 
 public:
@@ -99,6 +104,7 @@ public:
     }
 
     void setup() {
+        // 获取输入数据的信息，包括名称和尺寸
         for (std::size_t i = 0; i < session_.GetInputCount(); i++) {
             input_names_.emplace_back(
                 session_.GetInputNameAllocated(i, allocator_).get());
@@ -112,6 +118,7 @@ public:
             }
         }
 
+        // 获取输出数据的信息，包括名称和尺寸
         for (std::size_t i = 0; i < session_.GetOutputCount(); i++) {
             output_names_.emplace_back(
                 session_.GetOutputNameAllocated(i, allocator_).get());
@@ -140,6 +147,7 @@ public:
         //                 << calculate_product(output_shapes_) << std::endl;
         // }
 
+        // 将名称从 std::string 类型转换为 char* 类型
         input_names_char_.resize(input_names_.size());
         std::transform(std::begin(input_names_), std::end(input_names_),
                         std::begin(input_names_char_),
@@ -164,7 +172,7 @@ public:
             Ort::Value::CreateTensor<float>(memory_info_, warmup_vector_.data(), warmup_vector_.size(), input_shapes_.data(), input_shapes_.size()),
             Ort::Value::CreateTensor<float>(memory_info_, warmup_vector_.data(), warmup_vector_.size(), input_shapes_.data(), input_shapes_.size()),
             Ort::Value::CreateTensor<float>(memory_info_, warmup_vector_.data(), warmup_vector_.size(), input_shapes_.data(), input_shapes_.size()) };
-        // 推理
+        // 热启动推理，给 CPU/GPU 添加缓存
         auto output_tensors =
             session_.Run(Ort::RunOptions{nullptr}, input_names_char_.data(),
                         input_tensors.data(), input_tensors.size(),

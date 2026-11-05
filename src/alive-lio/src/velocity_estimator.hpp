@@ -9,17 +9,21 @@
 #include <chrono>
 #include <sophus/so3.hpp>
 
-
+/// @brief 神经网络速度估计器的封装类，实际的推理由 OnnxModel 实现
 class VelocityEstimator {
 private:
     int buffer_len_;
     double t_duration_ = 5.0;
 
+    // 滑动窗口的 imu 采样数据缓存
     FixedDeque<float> acc_buffer_;
     FixedDeque<float> gyro_buffer_;
     FixedDeque<float> ori_buffer_;
+
+    // 预积分的速度缓存
     FixedDeque<V3D> preint_vel_buffer_;
 
+    // 前向推理的模型
     OnnxModel model_;
 
     bool remove_g_;
@@ -34,6 +38,7 @@ private:
     double t_last_ = 0.0;
     double t_last_imu_ = 0.0;
 
+    // 输出的速度和协方差
     Eigen::Vector3d net_vel_;
     Eigen::Vector3d net_cov_;
 
@@ -46,8 +51,6 @@ private:
 
     int num_outs_;
     std::vector<int> time_indices_;
-
-
 
 public:
     bool init_state_last = false;
@@ -100,6 +103,7 @@ public:
 
     void inference_velocity() {
         auto start = std::chrono::high_resolution_clock::now();
+        // 推理
         const auto &[vel, cov] = model_(acc_buffer_, gyro_buffer_, ori_buffer_);
         net_vel_ = vel;
         net_cov_ = cov;
@@ -128,6 +132,7 @@ public:
         std::cout << "Inference Time      : "  << avg_inference_elapsed << " ms" << std::endl;
     }
 
+    // 累积缓冲数据，主要是角速度、加速度以及旋转姿态
     void accumulate_buffers(MeasureGroup &meas, double t_curr, const state_ikfom &state_curr) {
         auto v_imu = meas.imu;
         const V3D &grav = state_last_.grav;
@@ -213,15 +218,17 @@ public:
         Eigen::Matrix3d VVt = M3D::Zero();
         const auto R_trans = state_point.rot.conjugate();
 
+        // 退化方向和退化块
         const auto &[num_degeneracy_trans, num_degeneracy_rot] = degeneracy_detector.get_degeneracy_num();
         const auto &[degeneracy_matrix, degeneracy_vector] = degeneracy_detector.get_degeneracy_block();
 
-        for (int i=0; i<num_degeneracy_trans; i++) {
-            const Eigen::Vector3d &evec = R_trans*degeneracy_matrix.block<1, 3>(i, 0);
+        for (int i = 0; i < num_degeneracy_trans; i++) {
+            const Eigen::Vector3d &evec = R_trans * degeneracy_matrix.block<1, 3>(i, 0);
             VVt += evec*evec.transpose();
         }
         const M3D VVt_orth = M3D::Identity() - VVt;
 
+        // 分成不同形式的状态更新方式
         if (update_mode_ == ESKF) {
             const Eigen::Vector3d vel_body = R_trans*state_point.vel;
             const Eigen::Vector3d z = VVt * (net_vel_ - vel_body);
